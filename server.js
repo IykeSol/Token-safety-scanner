@@ -3,6 +3,7 @@ const cors = require('cors');
 const axios = require('axios');
 const { ethers } = require('ethers');
 const { Connection, PublicKey } = require('@solana/web3.js');
+const path = require('path');  // ✅ FIXED: Added path module
 require('dotenv').config();
 
 BigInt.prototype.toJSON = function() {
@@ -24,15 +25,15 @@ console.error = (...args) => {
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
 
-// ✅ ADD THIS: Serve static files (HTML, CSS, JS)
+// ✅ Serve static files (HTML, CSS, JS, images)
 app.use(express.static(path.join(__dirname)));
 
-// ✅ ADD THIS: Serve index.html on root path
+// ✅ Serve index.html on root path
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
+
 // Rate limiting storage (simple in-memory)
 const rateLimitMap = new Map();
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
@@ -890,4 +891,3 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
-
