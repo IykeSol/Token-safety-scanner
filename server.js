@@ -3,7 +3,6 @@ const cors = require('cors');
 const axios = require('axios');
 const { ethers } = require('ethers');
 const { Connection, PublicKey } = require('@solana/web3.js');
-const path = require('path');  // ✅ FIXED: Added path module
 require('dotenv').config();
 
 BigInt.prototype.toJSON = function() {
@@ -26,12 +25,19 @@ console.error = (...args) => {
 app.use(cors());
 app.use(express.json());
 
-// ✅ Serve static files (HTML, CSS, JS, images)
-app.use(express.static(path.join(__dirname)));
-
-// ✅ Serve index.html on root path
+// ✅ Simple root endpoint (no file serving)
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+  res.json({
+    message: 'Token Safety Scanner API',
+    version: '1.3.0',
+    status: 'running',
+    endpoints: {
+      health: '/health',
+      checkToken: '/api/check-token/:network/:address',
+      tokenInfo: '/api/token-info/:address'
+    },
+    networks: ['ethereum', 'bsc', 'polygon', 'solana']
+  });
 });
 
 // Rate limiting storage (simple in-memory)
@@ -82,21 +88,19 @@ const RPC_ENDPOINTS = {
   solana: 'https://api.mainnet-beta.solana.com'
 };
 
-// Blockchain Explorer API Endpoints (Etherscan API V2 - Unified)
+// Blockchain Explorer API Endpoints
 const EXPLORER_APIS = {
   ethereum: 'https://api.etherscan.io/api',
   bsc: 'https://api.bscscan.com/api',
   polygon: 'https://api.polygonscan.com/api'
 };
 
-// Get unified API key (Etherscan API V2 works across 50+ EVM chains)
 const getExplorerApiKey = (network) => {
   return process.env[`${network.toUpperCase()}_API_KEY`] || 
          process.env.ETHERSCAN_API_KEY || 
          'YourApiKeyToken';
 };
 
-// Chain ID mapping
 const CHAIN_IDS = {
   ethereum: '1',
   bsc: '56',
@@ -104,7 +108,6 @@ const CHAIN_IDS = {
   solana: 'solana'
 };
 
-// Timeouts configuration
 const TIMEOUTS = {
   RPC_CALL: 8000,
   GOPLUS_API: 15000,
@@ -112,10 +115,8 @@ const TIMEOUTS = {
   EXPLORER_API: 10000
 };
 
-// Holder concentration thresholds
-const HOLDER_CONCENTRATION_THRESHOLD = 15; // 15% for top 10 holders
+const HOLDER_CONCENTRATION_THRESHOLD = 15;
 
-// Helper function to get provider
 const getProvider = (network, rpcIndex = 0) => {
   const rpcUrls = RPC_ENDPOINTS[network];
   if (!rpcUrls) {
@@ -130,7 +131,6 @@ const getProvider = (network, rpcIndex = 0) => {
   return new ethers.JsonRpcProvider(rpcUrl);
 };
 
-// Helper function to validate Ethereum address
 const isValidAddress = (address) => {
   try {
     return ethers.isAddress(address);
@@ -139,12 +139,10 @@ const isValidAddress = (address) => {
   }
 };
 
-// Helper function to validate Solana address
 const isValidSolanaAddress = (address) => {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
 };
 
-// Helper function to get block explorer URL
 function getExplorerUrl(network, address) {
   const explorers = {
     ethereum: `https://etherscan.io/token/${address}`,
@@ -155,9 +153,6 @@ function getExplorerUrl(network, address) {
   return explorers[network] || '#';
 }
 
-/**
- * Analyze holder concentration (Top 10 holders)
- */
 function analyzeHolderConcentration(holders) {
   if (!holders || holders.length === 0) {
     return {
@@ -178,7 +173,6 @@ function analyzeHolderConcentration(holders) {
       top10Percentage += percentage;
     });
 
-    // Convert to percentage (if it's in decimal form)
     if (top10Percentage < 1) {
       top10Percentage = top10Percentage * 100;
     }
@@ -224,9 +218,6 @@ function analyzeHolderConcentration(holders) {
   }
 }
 
-/**
- * Get token info from Blockchain Explorer API
- */
 async function getTokenInfoFromExplorer(network, address) {
   if (network === 'solana' || !EXPLORER_APIS[network]) {
     return { found: false };
@@ -249,8 +240,6 @@ async function getTokenInfoFromExplorer(network, address) {
       const result = Array.isArray(response.data.result) ? response.data.result[0] : response.data.result;
       
       console.log(`   ✅ Token: ${result.tokenName || 'Unknown'} (${result.symbol || 'Unknown'})`);
-      console.log(`   ✅ Total Supply: ${result.totalSupply || 'N/A'}`);
-      console.log(`   ✅ Decimals: ${result.decimals || 'N/A'}`);
       
       return {
         found: true,
@@ -261,8 +250,6 @@ async function getTokenInfoFromExplorer(network, address) {
         contractCreator: result.contractCreator || null,
         verified: true
       };
-    } else if (response.data && response.data.message) {
-      console.log(`   ⚠️  Explorer API: ${response.data.message}`);
     }
   } catch (error) {
     console.log(`   ⚠️  Explorer API error: ${error.message}`);
@@ -271,9 +258,6 @@ async function getTokenInfoFromExplorer(network, address) {
   return { found: false };
 }
 
-/**
- * Get contract source code verification status
- */
 async function getContractVerificationStatus(network, address) {
   if (network === 'solana' || !EXPLORER_APIS[network]) {
     return { verified: false };
@@ -295,9 +279,7 @@ async function getContractVerificationStatus(network, address) {
       const isVerified = result.SourceCode && result.SourceCode !== '';
       
       if (isVerified) {
-        console.log(`   ✅ Contract verified on ${network} explorer`);
-      } else {
-        console.log(`   ⚠️  Contract NOT verified`);
+        console.log(`   ✅ Contract verified`);
       }
       
       return {
@@ -315,12 +297,9 @@ async function getContractVerificationStatus(network, address) {
   return { verified: false };
 }
 
-/**
- * Get token info from DexScreener
- */
 async function getTokenInfoFromDexScreener(address) {
   try {
-    console.log('📊 Fetching token info from DexScreener...');
+    console.log('📊 Fetching from DexScreener...');
     const dexUrl = `https://api.dexscreener.com/latest/dex/tokens/${address}`;
     const response = await axios.get(dexUrl, {
       timeout: TIMEOUTS.DEXSCREENER_API,
@@ -340,23 +319,20 @@ async function getTokenInfoFromDexScreener(address) {
       };
     }
   } catch (error) {
-    console.log('📊 DexScreener lookup failed:', error.message);
+    console.log('📊 DexScreener failed:', error.message);
   }
   return { name: 'Unknown Token', symbol: 'UNKNOWN', found: false };
 }
 
-/**
- * Get Solana token ownership info
- */
 async function getSolanaTokenOwnership(address) {
   try {
-    console.log('🔗 Checking Solana blockchain for ownership data...');
+    console.log('🔗 Checking Solana blockchain...');
     
     const connection = new Connection(RPC_ENDPOINTS.solana, 'confirmed');
     const mintPublicKey = new PublicKey(address);
     
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Solana RPC timeout')), TIMEOUTS.RPC_CALL)
+      setTimeout(() => reject(new Error('Timeout')), TIMEOUTS.RPC_CALL)
     );
     
     const mintInfo = await Promise.race([
@@ -367,59 +343,42 @@ async function getSolanaTokenOwnership(address) {
     if (mintInfo.value && mintInfo.value.data && mintInfo.value.data.parsed) {
       const mintData = mintInfo.value.data.parsed.info;
       
-      const mintAuthority = mintData.mintAuthority;
-      const freezeAuthority = mintData.freezeAuthority;
-      
-      const isOwnershipRenounced = mintAuthority === null;
-      const canFreeze = freezeAuthority !== null;
-      
-      console.log(`   ├─ Mint Authority: ${mintAuthority || '✓ RENOUNCED'}`);
-      console.log(`   └─ Freeze Authority: ${freezeAuthority || '✓ DISABLED'}`);
-      
       return {
         found: true,
-        mintAuthority: mintAuthority,
-        freezeAuthority: freezeAuthority,
-        isOwnershipRenounced: isOwnershipRenounced,
-        canFreeze: canFreeze,
+        mintAuthority: mintData.mintAuthority,
+        freezeAuthority: mintData.freezeAuthority,
+        isOwnershipRenounced: mintData.mintAuthority === null,
+        canFreeze: mintData.freezeAuthority !== null,
         decimals: mintData.decimals,
         supply: mintData.supply
       };
     }
   } catch (error) {
-    console.log('⚠️  Solana blockchain query failed:', error.message);
+    console.log('⚠️  Solana query failed:', error.message);
   }
   
   return { found: false };
 }
 
-/**
- * Calculate risk score with holder concentration analysis
- */
 const calculateRiskScore = (securityData, verificationData, holderAnalysis) => {
   let score = 100;
   let risks = [];
 
   if (securityData.is_honeypot === '1') {
     score -= 40;
-    risks.push('CRITICAL: Honeypot detected - Cannot sell tokens');
+    risks.push('CRITICAL: Honeypot detected');
   }
 
   if (securityData.is_mintable === '1') {
     score -= 15;
-    risks.push('HIGH: Mint function active - Supply can be increased');
+    risks.push('HIGH: Mint function active');
   }
 
   if (securityData.owner_address && 
       securityData.owner_address !== '0x0000000000000000000000000000000000000000' &&
       securityData.owner_address !== null) {
     score -= 10;
-    
-    if (securityData.owner_address === 'SOLANA_OWNER_UNKNOWN') {
-      risks.push('MEDIUM: Ownership status unknown (limited data)');
-    } else {
-      risks.push('MEDIUM: Ownership not renounced');
-    }
+    risks.push('MEDIUM: Ownership not renounced');
   }
 
   if (securityData.can_take_back_ownership === '1') {
@@ -429,7 +388,7 @@ const calculateRiskScore = (securityData, verificationData, holderAnalysis) => {
 
   if (securityData.is_blacklisted === '1') {
     score -= 20;
-    risks.push('HIGH: Blacklist function enabled');
+    risks.push('HIGH: Blacklist enabled');
   }
 
   const buyTax = parseFloat(securityData.buy_tax) || 0;
@@ -442,10 +401,9 @@ const calculateRiskScore = (securityData, verificationData, holderAnalysis) => {
 
   if (securityData.is_proxy === '1') {
     score -= 10;
-    risks.push('MEDIUM: Proxy contract - Code can be changed');
+    risks.push('MEDIUM: Proxy contract');
   }
 
-  // Holder concentration analysis
   if (holderAnalysis && holderAnalysis.available) {
     if (holderAnalysis.risk === 'high') {
       score -= 25;
@@ -456,13 +414,12 @@ const calculateRiskScore = (securityData, verificationData, holderAnalysis) => {
     }
   }
 
-  // Contract verification bonus
   if (verificationData && verificationData.verified) {
     score += 5;
     score = Math.min(100, score);
   } else if (verificationData && !verificationData.verified) {
     score -= 5;
-    risks.push('LOW: Contract source code not verified');
+    risks.push('LOW: Contract not verified');
   }
 
   if (securityData.holder_count && parseInt(securityData.holder_count) < 100) {
@@ -485,9 +442,7 @@ const calculateRiskScore = (securityData, verificationData, holderAnalysis) => {
   };
 };
 
-/**
- * Main Token Security Check Endpoint
- */
+// Main API endpoint
 app.get('/api/check-token/:network/:address', rateLimit, async (req, res) => {
   try {
     const { network, address } = req.params;
@@ -522,9 +477,8 @@ app.get('/api/check-token/:network/:address', rateLimit, async (req, res) => {
 
     let verificationData = null;
 
-    console.log(`🔍 [${network.toUpperCase()}] Scanning: ${address.substring(0, 8)}...${address.substring(address.length - 6)}`);
+    console.log(`🔍 [${network.toUpperCase()}] ${address.substring(0, 8)}...`);
 
-    // For EVM chains, get verified data from blockchain explorer
     if (network !== 'solana') {
       const explorerData = await getTokenInfoFromExplorer(network, address);
       
@@ -534,14 +488,12 @@ app.get('/api/check-token/:network/:address', rateLimit, async (req, res) => {
         tokenInfo.decimals = Number(explorerData.decimals);
         tokenInfo.totalSupply = explorerData.totalSupply;
         tokenInfo.verified = explorerData.verified;
-        console.log('✅ Using verified explorer data');
       }
 
       verificationData = await getContractVerificationStatus(network, address);
       tokenInfo.verified = verificationData.verified;
     }
 
-    // Get security data from GoPlus API
     let goplusUrl;
     let addressKey;
 
@@ -554,7 +506,6 @@ app.get('/api/check-token/:network/:address', rateLimit, async (req, res) => {
     }
 
     let securityData = null;
-    let goplusError = null;
 
     try {
       const goplusResponse = await axios.get(goplusUrl, {
@@ -562,49 +513,31 @@ app.get('/api/check-token/:network/:address', rateLimit, async (req, res) => {
         headers: { 
           'User-Agent': 'TokenScanner/1.3',
           'Accept': 'application/json'
-        },
-        validateStatus: (status) => status < 500
+        }
       });
 
-      if (goplusResponse.status === 200 && goplusResponse.data && goplusResponse.data.result) {
+      if (goplusResponse.data && goplusResponse.data.result) {
         securityData = goplusResponse.data.result[addressKey];
         
         if (securityData) {
-          console.log('✅ GoPlus security data received');
-          
           if (tokenInfo.name === 'Unknown' && securityData.token_name) {
             tokenInfo.name = securityData.token_name;
           }
           if (tokenInfo.symbol === 'Unknown' && securityData.token_symbol) {
             tokenInfo.symbol = securityData.token_symbol;
           }
-        } else {
-          goplusError = 'Token not found in GoPlus database';
-          console.log('⚠️  Token not indexed by GoPlus');
         }
-      } else {
-        goplusError = `GoPlus API returned status ${goplusResponse.status}`;
       }
     } catch (error) {
-      goplusError = error.message;
-      console.error('❌ GoPlus API Error:', error.message);
+      console.error('GoPlus error:', error.message);
     }
 
-    // Fallback for Solana if GoPlus doesn't have data
     if (!securityData && network === 'solana') {
-      console.log('⚠️  GoPlus has no data for this Solana token');
-      console.log('🔍 Querying Solana blockchain and DexScreener...');
-      
       const dexInfo = await getTokenInfoFromDexScreener(address);
       
       if (dexInfo.found) {
-        console.log(`✅ Token info from DexScreener: ${dexInfo.name} (${dexInfo.symbol})`);
         tokenInfo.name = dexInfo.name;
         tokenInfo.symbol = dexInfo.symbol;
-      } else {
-        console.log('⚠️  Token not found on DexScreener');
-        tokenInfo.name = 'Unknown Solana Token';
-        tokenInfo.symbol = 'UNKNOWN';
       }
       
       const solanaOwnership = await getSolanaTokenOwnership(address);
@@ -624,15 +557,7 @@ app.get('/api/check-token/:network/:address', rateLimit, async (req, res) => {
         if (solanaOwnership.decimals !== undefined) {
           tokenInfo.decimals = solanaOwnership.decimals;
         }
-        
-        console.log('✅ Using real Solana blockchain data');
-      } else {
-        ownerAddress = 'SOLANA_OWNER_UNKNOWN';
-        console.log('⚠️  Could not fetch ownership from blockchain');
       }
-      
-      // Solana holder data not available via free APIs
-      console.log('ℹ️  Top 10 holder analysis not available for Solana (no free API)');
       
       securityData = {
         token_name: tokenInfo.name,
@@ -652,32 +577,19 @@ app.get('/api/check-token/:network/:address', rateLimit, async (req, res) => {
         holder_count: 'N/A',
         lp_total_supply: 'N/A',
         lp_holder_count: 'N/A',
-        holders: [] // Not available for Solana via free APIs
+        holders: []
       };
-      
-      if (solanaOwnership.found) {
-        console.log('✅ Solana scan complete with blockchain verification');
-      } else {
-        console.log('ℹ️  Partial Solana scan (some data unavailable)');
-      }
     }
 
-    if (!securityData && network !== 'solana') {
+    if (!securityData) {
       return res.status(404).json({ 
-        error: 'Unable to fetch security data',
-        details: goplusError || 'Token may not be supported or is too new',
-        suggestion: 'Ensure the token has trading activity on DEXs',
-        explorerData: tokenInfo.name !== 'Unknown' ? tokenInfo : null
+        error: 'Unable to fetch security data'
       });
     }
 
-    // Analyze holder concentration
     const holderAnalysis = analyzeHolderConcentration(securityData.holders || []);
-
-    // Calculate risk assessment with holder analysis
     const riskAssessment = calculateRiskScore(securityData, verificationData, holderAnalysis);
 
-    // Build comprehensive response
     const response = {
       address: address,
       network: network,
@@ -710,31 +622,21 @@ app.get('/api/check-token/:network/:address', rateLimit, async (req, res) => {
       verification: verificationData || { verified: false },
       riskAssessment: riskAssessment,
       timestamp: new Date().toISOString(),
-      explorerUrl: getExplorerUrl(network, address),
-      dataSource: {
-        primary: network === 'solana' ? 'blockchain' : tokenInfo.verified ? 'explorer' : 'goplus',
-        security: 'goplus',
-        verification: network !== 'solana' ? 'explorer' : 'blockchain',
-        holders: network === 'solana' ? 'not available (no free API)' : 'goplus'
-      }
+      explorerUrl: getExplorerUrl(network, address)
     };
 
-    console.log(`✅ Scan complete - Risk: ${riskAssessment.level.toUpperCase()} (${riskAssessment.score}/100)`);
+    console.log(`✅ Risk: ${riskAssessment.level.toUpperCase()} (${riskAssessment.score}/100)`);
     res.json(response);
 
   } catch (error) {
-    console.error('💥 Server error:', error);
+    console.error('Error:', error);
     res.status(500).json({ 
       error: 'Internal server error',
-      message: error.message,
-      details: 'Please try again or check if the token address is correct'
+      message: error.message
     });
   }
 });
 
-/**
- * Token Market Data from DexScreener
- */
 app.get('/api/token-info/:address', rateLimit, async (req, res) => {
   try {
     const { address } = req.params;
@@ -755,7 +657,7 @@ app.get('/api/token-info/:address', rateLimit, async (req, res) => {
 
     if (!response.data || !response.data.pairs || response.data.pairs.length === 0) {
       return res.status(404).json({ 
-        error: 'No trading pairs found for this token' 
+        error: 'No trading pairs found' 
       });
     }
 
@@ -773,20 +675,9 @@ app.get('/api/token-info/:address', rateLimit, async (req, res) => {
         baseToken: pair.baseToken,
         quoteToken: pair.quoteToken,
         priceUsd: pair.priceUsd,
-        priceNative: pair.priceNative,
         liquidity: pair.liquidity,
-        fdv: pair.fdv,
-        volume: {
-          h24: pair.volume?.h24,
-          h6: pair.volume?.h6,
-          h1: pair.volume?.h1
-        },
-        priceChange: {
-          h24: pair.priceChange?.h24,
-          h6: pair.priceChange?.h6,
-          h1: pair.priceChange?.h1
-        },
-        txns: pair.txns,
+        volume: pair.volume,
+        priceChange: pair.priceChange,
         url: pair.url
       })),
       mainPair: {
@@ -795,7 +686,6 @@ app.get('/api/token-info/:address', rateLimit, async (req, res) => {
         liquidity: mainPair.liquidity?.usd,
         volume24h: mainPair.volume?.h24,
         priceChange24h: mainPair.priceChange?.h24,
-        fdv: mainPair.fdv,
         pairUrl: mainPair.url
       }
     };
@@ -803,7 +693,6 @@ app.get('/api/token-info/:address', rateLimit, async (req, res) => {
     res.json(marketData);
 
   } catch (error) {
-    console.error('DexScreener error:', error.message);
     res.status(500).json({ 
       error: 'Failed to fetch market data',
       message: error.message 
@@ -811,44 +700,15 @@ app.get('/api/token-info/:address', rateLimit, async (req, res) => {
   }
 });
 
-// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
     version: '1.3.0',
-    networks: Object.keys(RPC_ENDPOINTS),
-    apis: {
-      etherscan: 'Etherscan API V2 (Unified - 50+ EVM chains)',
-      goplus: 'GoPlus Security API',
-      solana: 'Solana Blockchain Direct',
-      dexscreener: 'DexScreener API'
-    },
-    features: [
-      'Multi-chain token scanning (4 networks)',
-      'Verified data from blockchain explorers',
-      'Contract source code verification check',
-      'GoPlus security analysis',
-      'Solana blockchain verification',
-      'DexScreener market data',
-      'Etherscan API V2 unified key support',
-      'Top 10 Holder Concentration Analysis (ETH/BSC/Polygon only)'
-    ],
-    holderAnalysis: {
-      threshold: `${HOLDER_CONCENTRATION_THRESHOLD}%`,
-      description: 'Warns if top 10 holders control more than 15% of supply',
-      sources: {
-        ethereum: 'GoPlus API',
-        bsc: 'GoPlus API',
-        polygon: 'GoPlus API',
-        solana: 'Not available (no free API)'
-      }
-    },
-    timeouts: TIMEOUTS
+    networks: Object.keys(RPC_ENDPOINTS)
   });
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log('');
   console.log('🚀 ═══════════════════════════════════════════════════');
@@ -865,25 +725,12 @@ app.listen(PORT, () => {
   console.log('      • Polygon - PolygonScan Verified ✓');
   console.log('      • Solana - Blockchain Direct ✓');
   console.log('');
-  console.log('   🔌 Data Sources:');
-  console.log('      1. Blockchain Explorer APIs (Verified)');
-  console.log('      2. Solana Web3.js (Direct Blockchain)');
-  console.log('      3. GoPlus Security API');
-  console.log('      4. DexScreener API');
-  console.log('');
   console.log('   ✨ Features v1.3:');
   console.log('      📊 Top 10 Holder Concentration Analysis');
   console.log(`      ⚠️  Threshold: ${HOLDER_CONCENTRATION_THRESHOLD}% concentration`);
   console.log('      • >50% = HIGH RISK (Danger)');
   console.log('      • >15% = MEDIUM RISK (Warning)');
   console.log('      • <15% = LOW RISK (Safe)');
-  console.log('');
-  console.log('   📝 Note:');
-  console.log('      Holder analysis available for: ETH, BSC, Polygon');
-  console.log('      Solana: Holder data requires paid APIs');
-  console.log('');
-  console.log('   💡 Optional API Keys (.env):');
-  console.log('      ETHERSCAN_API_KEY=your_key_here');
   console.log('');
   console.log('   ⚡ Ready to scan tokens!');
   console.log('═══════════════════════════════════════════════════');
