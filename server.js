@@ -1,11 +1,3 @@
-/**
- * Token Rug-Check & Safety Scanner - Backend Server v1.3
- * Node.js + Express + Ethers.js + Solana Web3.js
- * Free APIs: GoPlus, DexScreener, Blockchain Explorers (Etherscan API V2)
- * Supports: Ethereum, BSC, Polygon, Solana
- * Features: Top 10 Holders Concentration Analysis (EVM chains only)
- */
-
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -13,7 +5,6 @@ const { ethers } = require('ethers');
 const { Connection, PublicKey } = require('@solana/web3.js');
 require('dotenv').config();
 
-// Fix for BigInt JSON serialization error
 BigInt.prototype.toJSON = function() {
   return this.toString();
 };
@@ -21,7 +12,6 @@ BigInt.prototype.toJSON = function() {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Suppress Ethers.js network detection warnings
 const originalConsoleError = console.error;
 console.error = (...args) => {
   const msg = args[0]?.toString() || '';
@@ -36,6 +26,13 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
+// ✅ ADD THIS: Serve static files (HTML, CSS, JS)
+app.use(express.static(path.join(__dirname)));
+
+// ✅ ADD THIS: Serve index.html on root path
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 // Rate limiting storage (simple in-memory)
 const rateLimitMap = new Map();
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
@@ -893,3 +890,4 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
