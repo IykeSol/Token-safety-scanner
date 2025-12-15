@@ -5,16 +5,11 @@ const { ethers } = require('ethers');
 const { Connection, PublicKey } = require('@solana/web3.js');
 require('dotenv').config();
 
-if (process.env.TELEGRAM_BOT_TOKEN) {
-  require('./telegram-bot');
-}
-
 BigInt.prototype.toJSON = function() {
   return this.toString();
 };
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 const originalConsoleError = console.error;
 console.error = (...args) => {
@@ -29,7 +24,7 @@ console.error = (...args) => {
 app.use(cors());
 app.use(express.json());
 
-// ✅ Simple root endpoint (no file serving)
+// ✅ Simple root endpoint
 app.get('/', (req, res) => {
   res.json({
     message: 'Token Safety Scanner API',
@@ -44,12 +39,11 @@ app.get('/', (req, res) => {
   });
 });
 
-// Rate limiting storage (simple in-memory)
+// Rate limiting storage
 const rateLimitMap = new Map();
-const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_WINDOW = 60000;
 const MAX_REQUESTS = 10;
 
-// Rate limiting middleware
 const rateLimit = (req, res, next) => {
   const ip = req.ip;
   const now = Date.now();
@@ -72,7 +66,7 @@ const rateLimit = (req, res, next) => {
   next();
 };
 
-// Multiple RPC endpoints with fallbacks
+// RPC endpoints
 const RPC_ENDPOINTS = {
   ethereum: [
     'https://ethereum-rpc.publicnode.com',
@@ -92,7 +86,6 @@ const RPC_ENDPOINTS = {
   solana: 'https://api.mainnet-beta.solana.com'
 };
 
-// Blockchain Explorer API Endpoints
 const EXPLORER_APIS = {
   ethereum: 'https://api.etherscan.io/api',
   bsc: 'https://api.bscscan.com/api',
@@ -713,6 +706,25 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Telegram Bot Integration
+if (process.env.TELEGRAM_BOT_TOKEN) {
+  const telegramBot = require('./telegram-bot');
+  
+  if (telegramBot) {
+    const { bot, webhookPath } = telegramBot;
+    
+    // Add webhook route to existing Express app
+    app.post(webhookPath, express.json(), (req, res) => {
+      bot.processUpdate(req.body);
+      res.sendStatus(200);
+    });
+    
+    console.log('✅ Telegram bot webhook route added');
+  }
+}
+
+// ✅ SINGLE app.listen() - This is the ONLY listen call
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log('');
   console.log('🚀 ═══════════════════════════════════════════════════');
@@ -720,8 +732,9 @@ app.listen(PORT, () => {
   console.log('   🆕 Top 10 Holder Analysis (EVM Chains)');
   console.log('   ═══════════════════════════════════════════════════');
   console.log('');
-  console.log(`   📡 Server:     http://localhost:${PORT}`);
-  console.log(`   ❤️  Health:     http://localhost:${PORT}/health`);
+  console.log(`   📡 Server running on port ${PORT}`);
+  console.log(`   ❤️  Health: http://localhost:${PORT}/health`);
+  console.log(`   🔗 API Base: http://localhost:${PORT}/api`);
   console.log('');
   console.log('   🌐 Supported Networks:');
   console.log('      • Ethereum - Etherscan Verified ✓');
@@ -742,4 +755,3 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
-
