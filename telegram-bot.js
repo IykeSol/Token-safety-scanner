@@ -21,28 +21,59 @@ bot.setWebHook(`${WEBHOOK_URL}${webhookPath}`)
 // Store user sessions
 const userSessions = new Map();
 
-// Helper function to format numbers
+// Helper function to format numbers with proper abbreviations
 function formatNumber(num) {
-  if (!num) return '0';
+  if (!num || isNaN(num)) return 'N/A';
   const n = parseFloat(num);
+  
+  if (n === 0) return '0';
+  
+  if (n >= 1e12) return (n / 1e12).toFixed(2) + 'T';
   if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
   if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
   if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
-  if (n < 0.000001) return n.toExponential(2);
+  
+  if (n < 0.000001) return n.toFixed(10);
   if (n < 0.01) return n.toFixed(6);
   if (n < 1) return n.toFixed(4);
+  
   return n.toFixed(2);
 }
 
-// Helper function to format price
+// Helper function to format price with proper decimals
 function formatPrice(price) {
-  if (!price) return 'N/A';
+  if (!price || isNaN(price)) return 'N/A';
   const p = parseFloat(price);
-  if (p < 0.000001) return `$${p.toExponential(2)}`;
-  if (p < 0.01) return `$${p.toFixed(8)}`;
-  if (p < 1) return `$${p.toFixed(6)}`;
-  if (p < 100) return `$${p.toFixed(4)}`;
-  return `$${p.toFixed(2)}`;
+  
+  if (p === 0) return '$0.00';
+  
+  // Very tiny prices (shitcoins)
+  if (p < 0.00000001) {
+    return `$${p.toFixed(12).replace(/\.?0+$/, '')}`;
+  }
+  
+  if (p < 0.000001) {
+    return `$${p.toFixed(10).replace(/\.?0+$/, '')}`;
+  }
+  
+  if (p < 0.0001) {
+    return `$${p.toFixed(8).replace(/\.?0+$/, '')}`;
+  }
+  
+  if (p < 0.01) {
+    return `$${p.toFixed(6)}`;
+  }
+  
+  if (p < 1) {
+    return `$${p.toFixed(4)}`;
+  }
+  
+  if (p < 100) {
+    return `$${p.toFixed(3)}`;
+  }
+  
+  // Standard prices
+  return `$${p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 // Helper function to format percentage
@@ -50,7 +81,8 @@ function formatPercentage(percent) {
   if (!percent || isNaN(percent)) return 'N/A';
   const p = parseFloat(percent);
   const sign = p >= 0 ? '📈' : '📉';
-  return `${sign} ${p >= 0 ? '+' : ''}${p.toFixed(2)}%`;
+  const color = p >= 0 ? '+' : '';
+  return `${sign} ${color}${p.toFixed(2)}%`;
 }
 
 // /start command - Show network selection
@@ -385,3 +417,4 @@ bot.onText(/\/help/, (msg) => {
 });
 
 module.exports = { bot, webhookPath };
+
