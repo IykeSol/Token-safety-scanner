@@ -1,9 +1,9 @@
-// telegram-bot.js
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
+const ADMIN_ID = parseInt(process.env.ADMIN_ID); 
 
 if (!BOT_TOKEN) {
   console.log('⚠️  No TELEGRAM_BOT_TOKEN found, skipping bot setup');
@@ -21,7 +21,18 @@ bot.setWebHook(`${WEBHOOK_URL}${webhookPath}`)
 // Store user sessions
 const userSessions = new Map();
 
-// Helper function to format numbers with proper abbreviations
+const stats = {
+  totalUsers: 0,
+  totalScans: 0,
+  users: new Set(),
+  networkScans: {
+    ethereum: 0,
+    bsc: 0,
+    polygon: 0,
+    solana: 0
+  }
+};
+
 function formatNumber(num) {
   if (!num || isNaN(num)) return 'N/A';
   const n = parseFloat(num);
@@ -40,14 +51,12 @@ function formatNumber(num) {
   return n.toFixed(2);
 }
 
-// Helper function to format price with proper decimals
 function formatPrice(price) {
   if (!price || isNaN(price)) return 'N/A';
   const p = parseFloat(price);
   
   if (p === 0) return '$0.00';
   
-  // Very tiny prices (shitcoins)
   if (p < 0.00000001) {
     return `$${p.toFixed(12).replace(/\.?0+$/, '')}`;
   }
@@ -72,11 +81,9 @@ function formatPrice(price) {
     return `$${p.toFixed(3)}`;
   }
   
-  // Standard prices
   return `$${p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Helper function to format percentage
 function formatPercentage(percent) {
   if (!percent || isNaN(percent)) return 'N/A';
   const p = parseFloat(percent);
@@ -85,7 +92,7 @@ function formatPercentage(percent) {
   return `${sign} ${color}${p.toFixed(2)}%`;
 }
 
-// /start command - Show network selection
+// /start command
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   
@@ -122,7 +129,7 @@ bot.onText(/\/start/, (msg) => {
   );
 });
 
-// /scan command - Show network selection
+// /scan command
 bot.onText(/\/scan/, (msg) => {
   const chatId = msg.chat.id;
   
@@ -149,13 +156,32 @@ bot.onText(/\/scan/, (msg) => {
   );
 });
 
-// Handle network selection buttons
+// ✅ /stats command (admin only)
+bot.onText(/\/stats/, (msg) => {
+  if (!ADMIN_ID || msg.from.id !== ADMIN_ID) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin access only.');
+  }
+
+  const message = 
+    '📊 *Token Shield Analytics*\n' +
+    '━━━━━━━━━━━━━━━━━━━━\n\n' +
+    `👥 Total Users: *${stats.totalUsers}*\n` +
+    `🔍 Total Scans: *${stats.totalScans}*\n\n` +
+    '🌐 *Scans by Network:*\n' +
+    `🔷 Ethereum: ${stats.networkScans.ethereum}\n` +
+    `🟡 BSC: ${stats.networkScans.bsc}\n` +
+    `🟣 Polygon: ${stats.networkScans.polygon}\n` +
+    `🟢 Solana: ${stats.networkScans.solana}\n\n` +
+    `📅 Last updated: ${new Date().toLocaleString()}`;
+
+  bot.sendMessage(msg.chat.id, message, { parse_mode: 'Markdown' });
+});
+
 bot.on('callback_query', async (callbackQuery) => {
   const msg = callbackQuery.message;
   const chatId = msg.chat.id;
   const data = callbackQuery.data;
 
-  // Handle network selection
   if (data.startsWith('network_')) {
     const network = data.replace('network_', '');
     
@@ -180,6 +206,33 @@ bot.on('callback_query', async (callbackQuery) => {
       { parse_mode: 'Markdown' }
     );
   }
+
+  // Handle "Scan Another Token" button
+  if (data === 'scan_new') {
+    bot.answerCallbackQuery(callbackQuery.id);
+    
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: '🔷 Ethereum', callback_data: 'network_ethereum' },
+          { text: '🟡 BSC', callback_data: 'network_bsc' }
+        ],
+        [
+          { text: '🟣 Polygon', callback_data: 'network_polygon' },
+          { text: '🟢 Solana', callback_data: 'network_solana' }
+        ]
+      ]
+    };
+
+    bot.sendMessage(
+      callbackQuery.message.chat.id,
+      '🌐 *Select Blockchain Network*\n━━━━━━━━━━━━━━━━━━━━\n\nChoose the network:',
+      { 
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      }
+    );
+  }
 });
 
 // Handle text messages (token addresses)
@@ -187,6 +240,7 @@ bot.on('message', async (msg) => {
   if (msg.text && msg.text.startsWith('/')) return;
   
   const chatId = msg.chat.id;
+  const userId = msg.from.id;
   const address = msg.text?.trim();
 
   const session = userSessions.get(chatId);
@@ -209,6 +263,16 @@ bot.on('message', async (msg) => {
     );
   }
 
+  // ✅ Track user and scan
+  if (!stats.users.has(userId)) {
+    stats.users.add(userId);
+    stats.totalUsers = stats.users.size;
+    console.log(`✅ New user: ${userId} (Total: ${stats.totalUsers})`);
+  }
+  stats.totalScans += 1;
+  stats.networkScans[network] = (stats.networkScans[network] || 0) + 1;
+  console.log(`📊 Scan #${stats.totalScans} on ${network} by user ${userId}`);
+
   const scanMsg = await bot.sendMessage(
     chatId,
     `🔍 *Scanning Token...*\n━━━━━━━━━━━━━━━━━━━━\n\n` +
@@ -220,8 +284,7 @@ bot.on('message', async (msg) => {
 
   try {
     const API_BASE = process.env.API_BASE || 'https://token-safety-scanner.onrender.com/api';
-    
-    // Fetch security data and market data in parallel
+
     const [securityRes, marketRes] = await Promise.allSettled([
       axios.get(`${API_BASE}/check-token/${network}/${address}`, { timeout: 30000 }),
       axios.get(`${API_BASE}/token-info/${address}`, { timeout: 10000 })
@@ -236,22 +299,18 @@ bot.on('message', async (msg) => {
     const ti = data.tokenInfo;
     const hc = data.holderConcentration;
 
-    // Get market data if available
     let marketData = null;
     if (marketRes.status === 'fulfilled' && marketRes.value.data.mainPair) {
       marketData = marketRes.value.data.mainPair;
     }
 
-    // Risk emoji
     let riskEmoji = '✅';
     if (risk.level === 'danger') riskEmoji = '🚨';
     else if (risk.level === 'warning') riskEmoji = '⚠️';
 
-    // Build professional message
     let message = `${riskEmoji} *${ti.name} (${ti.symbol})*\n`;
     message += '━━━━━━━━━━━━━━━━━━━━\n\n';
 
-    // Market Data Section
     if (marketData) {
       message += '💰 *MARKET DATA*\n';
       message += `Price: *${formatPrice(marketData.priceUsd)}*\n`;
@@ -271,18 +330,15 @@ bot.on('message', async (msg) => {
       message += '\n';
     }
 
-    // Security Section
     message += '🛡️ *SECURITY ANALYSIS*\n';
     message += `Network: *${network.toUpperCase()}*\n`;
     message += `Risk Score: *${risk.score}/100* (*${risk.level.toUpperCase()}*)\n`;
     
-    // Holder concentration
     if (hc && hc.available) {
       const holderEmoji = hc.risk === 'high' ? '🚨' : hc.risk === 'medium' ? '⚠️' : '✅';
       message += `${holderEmoji} Top 10 Holders: *${hc.top10Percentage}%*\n`;
     }
-    
-    // Main risks
+
     if (risk.risks && risk.risks.length > 0) {
       message += `\n⚠️ *KEY RISKS:*\n`;
       risk.risks.slice(0, 4).forEach(r => {
@@ -292,14 +348,12 @@ bot.on('message', async (msg) => {
     
     message += '\n━━━━━━━━━━━━━━━━━━━━';
 
-    // Buttons
     const keyboard = {
       inline_keyboard: [
         [{ text: '🔍 View on Explorer', url: data.explorerUrl }]
       ]
     };
 
-    // Add DEX chart button if market data exists
     if (marketData && marketData.pairUrl) {
       keyboard.inline_keyboard.push([
         { text: '📊 View DEX Chart', url: marketData.pairUrl }
@@ -358,37 +412,6 @@ bot.on('message', async (msg) => {
   }
 });
 
-// Handle "Scan Another Token" button
-bot.on('callback_query', async (callbackQuery) => {
-  const data = callbackQuery.data;
-  
-  if (data === 'scan_new') {
-    bot.answerCallbackQuery(callbackQuery.id);
-    
-    const keyboard = {
-      inline_keyboard: [
-        [
-          { text: '🔷 Ethereum', callback_data: 'network_ethereum' },
-          { text: '🟡 BSC', callback_data: 'network_bsc' }
-        ],
-        [
-          { text: '🟣 Polygon', callback_data: 'network_polygon' },
-          { text: '🟢 Solana', callback_data: 'network_solana' }
-        ]
-      ]
-    };
-
-    bot.sendMessage(
-      callbackQuery.message.chat.id,
-      '🌐 *Select Blockchain Network*\n━━━━━━━━━━━━━━━━━━━━\n\nChoose the network:',
-      { 
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-      }
-    );
-  }
-});
-
 // /help command
 bot.onText(/\/help/, (msg) => {
   bot.sendMessage(
@@ -417,4 +440,3 @@ bot.onText(/\/help/, (msg) => {
 });
 
 module.exports = { bot, webhookPath };
-
