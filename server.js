@@ -5,6 +5,10 @@ const { ethers } = require('ethers');
 const { Connection, PublicKey } = require('@solana/web3.js');
 require('dotenv').config();
 
+if (process.env.TELEGRAM_BOT_TOKEN) {
+  require('./telegram-bot');
+}
+
 BigInt.prototype.toJSON = function() {
   return this.toString();
 };
@@ -738,3 +742,4 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
