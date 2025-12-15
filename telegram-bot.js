@@ -21,6 +21,38 @@ bot.setWebHook(`${WEBHOOK_URL}${webhookPath}`)
 // Store user sessions
 const userSessions = new Map();
 
+// Helper function to format numbers
+function formatNumber(num) {
+  if (!num) return '0';
+  const n = parseFloat(num);
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
+  if (n < 0.000001) return n.toExponential(2);
+  if (n < 0.01) return n.toFixed(6);
+  if (n < 1) return n.toFixed(4);
+  return n.toFixed(2);
+}
+
+// Helper function to format price
+function formatPrice(price) {
+  if (!price) return 'N/A';
+  const p = parseFloat(price);
+  if (p < 0.000001) return `$${p.toExponential(2)}`;
+  if (p < 0.01) return `$${p.toFixed(8)}`;
+  if (p < 1) return `$${p.toFixed(6)}`;
+  if (p < 100) return `$${p.toFixed(4)}`;
+  return `$${p.toFixed(2)}`;
+}
+
+// Helper function to format percentage
+function formatPercentage(percent) {
+  if (!percent || isNaN(percent)) return 'N/A';
+  const p = parseFloat(percent);
+  const sign = p >= 0 ? '📈' : '📉';
+  return `${sign} ${p >= 0 ? '+' : ''}${p.toFixed(2)}%`;
+}
+
 // /start command - Show network selection
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
@@ -40,13 +72,17 @@ bot.onText(/\/start/, (msg) => {
 
   bot.sendMessage(
     chatId,
-    '🛡️ *Welcome to Token Safety Scanner!*\n\n' +
-    '🔍 Check any crypto token for:\n' +
-    '• Honeypot detection\n' +
-    '• Holder concentration\n' +
-    '• Ownership risks\n' +
-    '• Contract verification\n\n' +
-    '👇 *Select a network to scan:*',
+    '🛡️ *Token Safety Scanner Bot*\n\n' +
+    '✨ *Professional Token Analysis*\n' +
+    '━━━━━━━━━━━━━━━━━━━━\n\n' +
+    '🔍 *We Check:*\n' +
+    '• Real-time Price & Market Data\n' +
+    '• Honeypot Detection\n' +
+    '• Holder Concentration Risk\n' +
+    '• Ownership & Renouncement\n' +
+    '• Contract Verification\n' +
+    '• Tax Rates & Liquidity\n\n' +
+    '👇 *Select Network to Scan:*',
     { 
       parse_mode: 'Markdown',
       reply_markup: keyboard
@@ -73,7 +109,7 @@ bot.onText(/\/scan/, (msg) => {
 
   bot.sendMessage(
     chatId,
-    '🌐 *Select Network*\n\nChoose the blockchain network:',
+    '🌐 *Select Blockchain Network*\n━━━━━━━━━━━━━━━━━━━━\n\nChoose the network:',
     { 
       parse_mode: 'Markdown',
       reply_markup: keyboard
@@ -91,10 +127,8 @@ bot.on('callback_query', async (callbackQuery) => {
   if (data.startsWith('network_')) {
     const network = data.replace('network_', '');
     
-    // Store selected network in user session
     userSessions.set(chatId, { network });
 
-    // Network emojis
     const networkEmojis = {
       ethereum: '🔷',
       bsc: '🟡',
@@ -102,15 +136,14 @@ bot.on('callback_query', async (callbackQuery) => {
       solana: '🟢'
     };
 
-    // Answer callback query (removes loading state)
     bot.answerCallbackQuery(callbackQuery.id);
 
-    // Ask for token address
     bot.sendMessage(
       chatId,
-      `${networkEmojis[network]} *${network.toUpperCase()} Selected*\n\n` +
-      '📋 *Now send the token contract address:*\n\n' +
-      'Example:\n' +
+      `${networkEmojis[network]} *${network.toUpperCase()} Network Selected*\n` +
+      '━━━━━━━━━━━━━━━━━━━━\n\n' +
+      '📋 *Send Token Contract Address*\n\n' +
+      '✏️ Example:\n' +
       '`0xdAC17F958D2ee523a2206206994597C13D831ec7`',
       { parse_mode: 'Markdown' }
     );
@@ -119,128 +152,170 @@ bot.on('callback_query', async (callbackQuery) => {
 
 // Handle text messages (token addresses)
 bot.on('message', async (msg) => {
-  // Ignore commands
   if (msg.text && msg.text.startsWith('/')) return;
   
   const chatId = msg.chat.id;
   const address = msg.text?.trim();
 
-  // Check if user has selected a network
   const session = userSessions.get(chatId);
   
   if (!session || !session.network) {
     return bot.sendMessage(
       chatId,
-      '⚠️ Please select a network first!\n\nUse /scan to start.',
+      '⚠️ *Please select a network first!*\n\nUse /scan to start.',
       { parse_mode: 'Markdown' }
     );
   }
 
   const network = session.network;
 
-  // Validate address format
   if (!address || address.length < 32) {
     return bot.sendMessage(
       chatId,
-      '❌ Invalid address format.\n\nPlease send a valid contract address.',
+      '❌ *Invalid address format*\n\nPlease send a valid contract address.',
       { parse_mode: 'Markdown' }
     );
   }
 
-  // Send scanning message
   const scanMsg = await bot.sendMessage(
     chatId,
-    `🔍 *Scanning ${network.toUpperCase()} token...*\n\n` +
+    `🔍 *Scanning Token...*\n━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `Network: *${network.toUpperCase()}*\n` +
     `Address: \`${address.substring(0, 10)}...${address.substring(address.length - 8)}\`\n\n` +
-    '⏳ Please wait...',
+    '⏳ Analyzing security & fetching market data...',
     { parse_mode: 'Markdown' }
   );
 
   try {
     const API_BASE = process.env.API_BASE || 'https://token-safety-scanner.onrender.com/api';
     
-    const res = await axios.get(`${API_BASE}/check-token/${network}/${address}`, {
-      timeout: 30000
-    });
-    
-    const data = res.data;
+    // Fetch security data and market data in parallel
+    const [securityRes, marketRes] = await Promise.allSettled([
+      axios.get(`${API_BASE}/check-token/${network}/${address}`, { timeout: 30000 }),
+      axios.get(`${API_BASE}/token-info/${address}`, { timeout: 10000 })
+    ]);
+
+    if (securityRes.status !== 'fulfilled') {
+      throw new Error('Security scan failed');
+    }
+
+    const data = securityRes.value.data;
     const risk = data.riskAssessment;
     const ti = data.tokenInfo;
     const hc = data.holderConcentration;
 
-    // Risk emoji and color
+    // Get market data if available
+    let marketData = null;
+    if (marketRes.status === 'fulfilled' && marketRes.value.data.mainPair) {
+      marketData = marketRes.value.data.mainPair;
+    }
+
+    // Risk emoji
     let riskEmoji = '✅';
     if (risk.level === 'danger') riskEmoji = '🚨';
     else if (risk.level === 'warning') riskEmoji = '⚠️';
 
-    // Build response
-    let message = `${riskEmoji} *${ti.name} (${ti.symbol})*\n\n`;
-    message += `*Network:* ${network.toUpperCase()}\n`;
-    message += `*Risk Score:* ${risk.score}/100 (*${risk.level.toUpperCase()}*)\n`;
+    // Build professional message
+    let message = `${riskEmoji} *${ti.name} (${ti.symbol})*\n`;
+    message += '━━━━━━━━━━━━━━━━━━━━\n\n';
+
+    // Market Data Section
+    if (marketData) {
+      message += '💰 *MARKET DATA*\n';
+      message += `Price: *${formatPrice(marketData.priceUsd)}*\n`;
+      
+      if (marketData.priceChange24h) {
+        message += `24h Change: ${formatPercentage(marketData.priceChange24h)}\n`;
+      }
+      
+      if (marketData.liquidity) {
+        message += `Liquidity: *$${formatNumber(marketData.liquidity)}*\n`;
+      }
+      
+      if (marketData.volume24h) {
+        message += `24h Volume: *$${formatNumber(marketData.volume24h)}*\n`;
+      }
+      
+      message += '\n';
+    }
+
+    // Security Section
+    message += '🛡️ *SECURITY ANALYSIS*\n';
+    message += `Network: *${network.toUpperCase()}*\n`;
+    message += `Risk Score: *${risk.score}/100* (*${risk.level.toUpperCase()}*)\n`;
     
     // Holder concentration
     if (hc && hc.available) {
       const holderEmoji = hc.risk === 'high' ? '🚨' : hc.risk === 'medium' ? '⚠️' : '✅';
-      message += `${holderEmoji} *Top 10 Holders:* ${hc.top10Percentage}% of supply\n`;
+      message += `${holderEmoji} Top 10 Holders: *${hc.top10Percentage}%*\n`;
     }
     
     // Main risks
     if (risk.risks && risk.risks.length > 0) {
-      message += `\n*⚠️ Main Risks:*\n`;
-      risk.risks.slice(0, 5).forEach(r => {
+      message += `\n⚠️ *KEY RISKS:*\n`;
+      risk.risks.slice(0, 4).forEach(r => {
         message += `• ${r}\n`;
       });
     }
     
-    // Explorer link button
+    message += '\n━━━━━━━━━━━━━━━━━━━━';
+
+    // Buttons
     const keyboard = {
       inline_keyboard: [
-        [{ text: '🔍 View on Explorer', url: data.explorerUrl }],
-        [{ text: '🔄 Scan Another Token', callback_data: 'scan_new' }]
+        [{ text: '🔍 View on Explorer', url: data.explorerUrl }]
       ]
     };
 
-    // Delete scanning message
+    // Add DEX chart button if market data exists
+    if (marketData && marketData.pairUrl) {
+      keyboard.inline_keyboard.push([
+        { text: '📊 View DEX Chart', url: marketData.pairUrl }
+      ]);
+    }
+
+    keyboard.inline_keyboard.push([
+      { text: '🔄 Scan Another Token', callback_data: 'scan_new' }
+    ]);
+
     bot.deleteMessage(chatId, scanMsg.message_id).catch(() => {});
 
-    // Send result
     await bot.sendMessage(chatId, message, { 
       parse_mode: 'Markdown',
       reply_markup: keyboard,
       disable_web_page_preview: true 
     });
 
-    // Clear session after successful scan
     userSessions.delete(chatId);
 
   } catch (err) {
     console.error('Scan error:', err.response?.data || err.message);
     
-    // Delete scanning message
     bot.deleteMessage(chatId, scanMsg.message_id).catch(() => {});
 
-    let errorMsg = '❌ *Failed to scan token*\n\n';
+    let errorMsg = '❌ *Scan Failed*\n━━━━━━━━━━━━━━━━━━━━\n\n';
     
     if (err.response?.status === 400) {
-      errorMsg += '❗ Invalid address or network mismatch\n\n';
-      errorMsg += 'Make sure:\n';
-      errorMsg += `• Address is valid for *${network.toUpperCase()}*\n`;
-      errorMsg += '• Token exists on this network';
+      errorMsg += '❗ *Invalid Request*\n\n';
+      errorMsg += `• Check address is valid for *${network.toUpperCase()}*\n`;
+      errorMsg += '• Verify token exists on this network';
     } else if (err.response?.status === 404) {
-      errorMsg += '⚠️ Token not found\n\n';
-      errorMsg += 'This token may not be listed or deployed yet.';
+      errorMsg += '⚠️ *Token Not Found*\n\n';
+      errorMsg += 'This token may not be:\n';
+      errorMsg += '• Listed on DEX yet\n';
+      errorMsg += '• Deployed on this network';
     } else if (err.code === 'ECONNABORTED') {
-      errorMsg += '⏱️ Request timeout\n\n';
-      errorMsg += 'The server took too long to respond. Try again.';
+      errorMsg += '⏱️ *Request Timeout*\n\n';
+      errorMsg += 'Server response took too long.\nPlease try again.';
     } else {
-      errorMsg += '🔧 Server error\n\n';
-      errorMsg += 'Please try again in a moment.';
+      errorMsg += '🔧 *Server Error*\n\n';
+      errorMsg += 'Our servers are busy.\nTry again in a moment.';
     }
 
     const retryKeyboard = {
       inline_keyboard: [
         [{ text: '🔄 Try Again', callback_data: `network_${network}` }],
-        [{ text: '🏠 Back to Networks', callback_data: 'scan_new' }]
+        [{ text: '🏠 Select Network', callback_data: 'scan_new' }]
       ]
     };
     
@@ -248,8 +323,6 @@ bot.on('message', async (msg) => {
       parse_mode: 'Markdown',
       reply_markup: retryKeyboard
     });
-
-    // Keep session for retry
   }
 });
 
@@ -275,7 +348,7 @@ bot.on('callback_query', async (callbackQuery) => {
 
     bot.sendMessage(
       callbackQuery.message.chat.id,
-      '🌐 *Select Network*\n\nChoose the blockchain network:',
+      '🌐 *Select Blockchain Network*\n━━━━━━━━━━━━━━━━━━━━\n\nChoose the network:',
       { 
         parse_mode: 'Markdown',
         reply_markup: keyboard
@@ -288,23 +361,25 @@ bot.on('callback_query', async (callbackQuery) => {
 bot.onText(/\/help/, (msg) => {
   bot.sendMessage(
     msg.chat.id,
-    '📖 *How to Use*\n\n' +
+    '📖 *HOW TO USE*\n' +
+    '━━━━━━━━━━━━━━━━━━━━\n\n' +
     '1️⃣ Send /scan or /start\n' +
-    '2️⃣ Click on a network button\n' +
-    '3️⃣ Send the token contract address\n' +
-    '4️⃣ Get instant security analysis!\n\n' +
-    '*Supported Networks:*\n' +
-    '🔷 Ethereum\n' +
-    '🟡 Binance Smart Chain\n' +
-    '🟣 Polygon\n' +
-    '🟢 Solana\n\n' +
-    '*What we check:*\n' +
-    '✓ Honeypot detection\n' +
-    '✓ Holder concentration\n' +
-    '✓ Ownership status\n' +
-    '✓ Contract verification\n' +
-    '✓ Tax rates\n' +
-    '✓ Liquidity analysis',
+    '2️⃣ Click network button\n' +
+    '3️⃣ Paste contract address\n' +
+    '4️⃣ Get instant analysis!\n\n' +
+    '🌐 *SUPPORTED NETWORKS*\n' +
+    '• 🔷 Ethereum\n' +
+    '• 🟡 Binance Smart Chain\n' +
+    '• 🟣 Polygon\n' +
+    '• 🟢 Solana\n\n' +
+    '🔍 *WE ANALYZE*\n' +
+    '• 💰 Real-time Price\n' +
+    '• 📊 24h Volume & Liquidity\n' +
+    '• 🛡️ Honeypot Detection\n' +
+    '• 👥 Holder Concentration\n' +
+    '• 🔒 Ownership Status\n' +
+    '• ✅ Contract Verification\n' +
+    '• 💸 Buy/Sell Tax Rates',
     { parse_mode: 'Markdown' }
   );
 });
